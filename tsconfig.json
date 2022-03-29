@@ -2,11 +2,11 @@
   "compilerOptions": {
     "module": "ES6",
     "moduleResolution": "node",
-    "outDir": "node/dist",
+    "outDir": "dist",
     "target": "ES6"
   },
   "include": [
-    "node/src/**/*"
+    "src/**/*"
   ],
   "exclude": [
     "node_modules"

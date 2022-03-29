@@ -2,10 +2,10 @@
   "name": "wordle-bot",
   "version": "1.0.0",
   "description": "solves today's wordle",
-  "main": "node/dist/app.js",
+  "main": "dist/app.js",
   "scripts": {
     "dev": "npx tsc --watch",
-    "start": "node node/dist/app.js",
+    "start": "node dist/app.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
