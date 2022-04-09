@@ -1,1 +1,1 @@
-Solves the wordle
+Solves the daily wordle
