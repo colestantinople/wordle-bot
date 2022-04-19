@@ -1,15 +1,16 @@
-export enum TileResultTypes {
-  unknown,
-  absent,
-  present,
-  correct,
+export type TileResultType = 0 | 1 | 2 | 3;
+export const TileResultTypes = {
+  unknown: 0 as TileResultType,
+  absent: 1 as TileResultType,
+  present: 2 as TileResultType,
+  correct: 3 as TileResultType,
 }
 
 export class TileResult {
   readonly letter: string;
-  readonly result: TileResultTypes;
+  readonly result: TileResultType;
 
-  constructor(letter: string, result: TileResultTypes) {
+  constructor(letter: string, result: TileResultType) {
     if (letter.length !== 1) throw new Error('Bad letter: ' + letter);
 
     this.letter = letter;
@@ -21,11 +22,12 @@ export class WordResults {
   readonly word: string;
   readonly values: TileResult[] = [];
 
-  constructor(word: string, results: TileResultTypes[]) {
+  constructor(word: string, results: TileResultType[]) {
+    const me = this;
     this.word = word;
 
-    results.forEach((result: TileResultTypes, index: number) => {
-      this.values.push(new TileResult(word[index], result))
+    results.forEach((result: TileResultType, index: number) => {
+      me.values.push(new TileResult(word[index], result))
     });
   }
 
