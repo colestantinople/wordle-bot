@@ -4,15 +4,44 @@ import { TileResult, TileResultTypes, WordResults } from './models/results.js';
 
 export class WordSelector {
   private static _remainingWords: string[];
+  private static _preferredRemainingWords: string[];
+
   private static lettersData: LettersData = new LettersData();
   private static previousWords: string[] = [];
+  private static previousResults: WordResults[] = [];
 
   static async init(): Promise<void> {
     this._remainingWords = JSON.parse(fs.readFileSync('data/words.json', 'utf8'));
+    this.setPreferredRemainingWords();
   }
 
   public static get remainingWords(): string[] {
     return this._remainingWords.slice(0);
+  }
+
+  static getSharableResults() {
+    let output: string = '';
+    output += `Wordlebot ${Math.floor((Date.now() - new Date('2021/06/19').getTime()) / (24 * 60 * 60 * 1000))} ${Math.min(this.previousResults.length, 6)}/6\n\n`;
+
+    this.previousResults.forEach((result: WordResults) => {
+      result.values.forEach((letter: TileResult) => {
+        switch (letter.result) {
+          case TileResultTypes.absent:
+            output += '⬛';
+            break;
+          case TileResultTypes.present:
+            output += '🟨';
+            break;
+          case TileResultTypes.correct:
+            output += '🟩';
+            break;
+        }
+      });
+
+      output += '\n';
+    });
+
+    return output;
   }
 
   static async processResults(results: WordResults, word: string): Promise<void> {
@@ -26,12 +55,17 @@ export class WordSelector {
         this.lettersData.data[result.letter].presentPositions.push(index);
     });
 
+    this.previousResults.push(results);
+
     // filter remaining words
     this._remainingWords = this._remainingWords
       .filter(this.filters.wordHasNoAbsentsNorTriedPresents)
       .filter(this.filters.wordHasAllCorrectLetters)
       .filter(this.filters.wordHasAllPresentLetters)
       .filter((remWord) => remWord !== results.word); // not the previous word
+
+    // filter remaining words by those most helpful
+    this.setPreferredRemainingWords();
   }
 
   static registerLetterResult(result: TileResult, index: number, word: string) {
@@ -45,22 +79,31 @@ export class WordSelector {
           this.lettersData.data[result.letter].result = result.result;
         break;
     }
-
   }
 
   static selectWord(wordIndex: number): string {
     let selection: string;
     if (wordIndex === 0)
       selection = this.helpers.selectRandom(
-        this._remainingWords.filter(
+        this._preferredRemainingWords.filter(
           this.filters.allLettersUnique
         )
       );
     else
-      selection = this.helpers.selectRandom(this._remainingWords);
+      selection = this.helpers.selectRandom(this._preferredRemainingWords);
 
     this.previousWords.push(selection);
     return selection;
+  }
+
+  static setPreferredRemainingWords() {
+    this._preferredRemainingWords = this._remainingWords;
+
+    if (this.previousResults.length < 4) { // filter by unique letters
+      const wordsWithUniqueLetters = this._remainingWords.filter(this.filters.wordHasUniqueLetters);
+      if (wordsWithUniqueLetters.length > 0)
+        this._preferredRemainingWords = wordsWithUniqueLetters;
+    }
   }
 
   static filters = {
@@ -151,6 +194,12 @@ export class WordSelector {
       }, true);
 
       return result;
+    },
+
+    wordHasUniqueLetters(word: string): boolean {
+      return word.split('').reduce((prev: boolean, current: string) => {
+        return prev && word.indexOf(current) === word.lastIndexOf(current);
+      }, true);
     },
   }
 

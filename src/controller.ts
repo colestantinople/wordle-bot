@@ -3,6 +3,7 @@ import puppeteer, { Browser, Page } from "puppeteer";
 import { DOMInteractor } from "./dom-interactor.js";
 import { TileResult, TileResultTypes, WordResults } from "./models/results.js";
 import { WordSelector } from "./word-selector.js";
+
 export class Controller {
   static readonly debug: boolean = Controller.shouldUseDebug();
   static wordAttempts: string[] = [];
@@ -20,9 +21,12 @@ export class Controller {
 
     await interactor.closeModal();
 
+    Controller.introduceWordlebot();
     WordSelector.init();
     Controller.deleteScreenshots();
 
+    if (this.shouldLogOutput()) console.log('');
+    
     for (let i = 0; i < 6; i++) {
       const wordChoice = WordSelector.selectWord(i);
       this.wordAttempts.push(wordChoice);
@@ -41,6 +45,8 @@ export class Controller {
         break;
       }
     }
+
+    console.log(WordSelector.getSharableResults());
     await browser.close();
   }
 
@@ -52,11 +58,16 @@ export class Controller {
   }
 
   static handleWin(winningWord: string, attemptCount: number): void {
-    console.log('Win: ' + winningWord);
-    console.log('Words tried: ' + attemptCount);
+    console.log('\nWin: ' + winningWord);
+    console.log('Words tried: ' + (attemptCount + 1));
     this.wordAttempts.forEach((word) => {
       console.log('  ' + word);
     });
+    console.log('');
+  }
+
+  static introduceWordlebot(): void {
+    console.log(`\nWordlebot - v${process.env.npm_package_version}`);
   }
 
   static logAttempt(word: string): void {
