@@ -1,6 +1,7 @@
 # Wordle-bot
+![image](https://user-images.githubusercontent.com/37753525/164368806-54de8da1-56dd-4560-89e0-4491f7f243ee.png)
 
-Solves the daily wordle.
+He solves the daily wordle.
 
 ## Uses:
  * Node.js
