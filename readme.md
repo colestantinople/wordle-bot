@@ -8,7 +8,3 @@ He solves the daily wordle.
  * puppeteer for DOM manipulation.
  * Python to generate the wordlist from a text file extract
  * TypeScript
-
-## TODO:
- * Handle multiple letters better (i.e. keep count of the maximumn amount of letters that could be in one word)
- * Set up a license
