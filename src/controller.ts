@@ -1,8 +1,10 @@
 import fs from "fs";
 import puppeteer, { Browser, Page } from "puppeteer";
 import { DOMInteractor } from "./dom-interactor.js";
-import { TileResult, TileResultTypes, WordResults } from "./models/results.js";
+import { WordResult } from "./models/word-result.js";
+import { TileResult } from "./models/tile-result";
 import { WordSelector } from "./word-selector.js";
+import { TileResultTypes } from "./models/tile-result-types.js";
 
 export class Controller {
   static readonly debug: boolean = Controller.shouldUseDebug();
@@ -79,7 +81,7 @@ export class Controller {
     fs.writeFileSync(`words/word-${attemptNumber}.txt`, WordSelector.remainingWords.join('\n'));
   }
 
-  static logResult(results: WordResults): void {
+  static logResult(results: WordResult): void {
     console.log('Result:  ' + results.values.map((result: TileResult, index: number) => {
       if (result.result === TileResultTypes.correct) return result.letter.toUpperCase();
       else if (result.result === TileResultTypes.present) return result.letter;

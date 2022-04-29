@@ -1,14 +1,20 @@
 import fs from 'fs';
-import { LetterData, LettersData } from './models/letters.js';
-import { TileResult, TileResultTypes, WordResults } from './models/results.js';
+import { LetterData, SingleLetterAttemptData } from './models/letter.js';
+import { WordResult } from './models/word-result.js';
+import { TileResultTypes } from "./models/tile-result-types.js";
+import { TileResult } from "./models/tile-result.js";
+import { AlphabetData } from './models/alphabet.js';
+import { Controller } from './controller.js';
+
+const WORD_SELECTOR_INDEX: number = 6;
 
 export class WordSelector {
   private static _remainingWords: string[];
   private static _preferredRemainingWords: string[];
 
-  private static lettersData: LettersData = new LettersData();
+  private static lettersData: AlphabetData = new AlphabetData();
   private static previousWords: string[] = [];
-  private static previousResults: WordResults[] = [];
+  private static previousResults: WordResult[] = [];
 
   static async init(): Promise<void> {
     this._remainingWords = JSON.parse(fs.readFileSync('data/words.json', 'utf8'));
@@ -23,7 +29,7 @@ export class WordSelector {
     let output: string = '';
     output += `Wordlebot ${Math.floor((Date.now() - new Date('2021/06/19').getTime()) / (24 * 60 * 60 * 1000))} ${Math.min(this.previousResults.length, 6)}/6\n\n`;
 
-    this.previousResults.forEach((result: WordResults) => {
+    this.previousResults.forEach((result: WordResult) => {
       result.values.forEach((letter: TileResult) => {
         switch (letter.result) {
           case TileResultTypes.absent:
@@ -44,46 +50,100 @@ export class WordSelector {
     return output;
   }
 
-  static async processResults(results: WordResults, word: string): Promise<void> {
-    // register word results
-    results.values.forEach((result: TileResult, index: number) => {
-      this.registerLetterResult(result, index, word);
+  static async processResults(results: WordResult, word: string): Promise<void> {
+    const __debugLogFilter = (name: string) => {
+      if (Controller.debug)
+        console.log(`Remaining words ${name}: ${this.remainingWords.length > 12 ? this.remainingWords.length : this.remainingWords.join(', ')}`);
+    }
 
-      if (result.result === TileResultTypes.correct)
-        this.lettersData.data[result.letter].correctPosition = index;
-      else if (result.result === TileResultTypes.present)
-        this.lettersData.data[result.letter].presentPositions.push(index);
+    // register letter results
+    results.values.forEach((result: TileResult, index: number) => {
+      this.lettersData.data[result.letter].attempts.push(new SingleLetterAttemptData(result.result, index, word[index]));
     });
 
+    // record results as word
+    this.registerFullWordResult(results, word);
+
+    // record result
     this.previousResults.push(results);
 
     // filter remaining words
-    this._remainingWords = this._remainingWords
-      .filter(this.filters.wordHasNoAbsentsNorTriedPresents)
-      .filter(this.filters.wordHasAllCorrectLetters)
-      .filter(this.filters.wordHasAllPresentLetters)
-      .filter((remWord) => remWord !== results.word); // not the previous word
+    __debugLogFilter('pre-filters');
+    this._remainingWords = this._remainingWords.filter(this.filters.wordHasNoAbsents);
+    __debugLogFilter('after no absents');
+    this._remainingWords = this._remainingWords.filter(this.filters.wordDoesntRetryPastPresents);
+    __debugLogFilter('after no present conflicts');
+    this._remainingWords = this._remainingWords.filter(this.filters.wordHasCorrectPresentCount);
+    __debugLogFilter('after correct present count');
+    this._remainingWords = this._remainingWords.filter(this.filters.wordHasAllCorrectLetters);
+    __debugLogFilter('after all corrects');
+    this._remainingWords = this._remainingWords.filter(this.filters.wordHasAllPresentLetters);
+    __debugLogFilter('after all present');
+    this._remainingWords = this._remainingWords.filter((remWord) => remWord !== results.word); // not the previous word
+
+    __debugLogFilter('post-filters');
 
     // filter remaining words by those most helpful
     this.setPreferredRemainingWords();
   }
 
-  static registerLetterResult(result: TileResult, index: number, word: string) {
-    switch (result.result) {
-      case TileResultTypes.correct:
-      case TileResultTypes.present:
-        this.lettersData.data[result.letter].result = result.result;
-        break;
-      case TileResultTypes.absent:
-        if (word.indexOf(result.letter) === word.lastIndexOf(result.letter)) // letter only appears once
-          this.lettersData.data[result.letter].result = result.result;
-        break;
-    }
+  static registerFullWordResult(result: WordResult, word: string) {
+    const lettersSet: string[] = word.split('').reduce((prev: string[], letter: string) => {
+      if (!prev.includes(letter))
+        prev.push(letter);
+
+      return prev;
+    }, []);
+
+    const resultsPerLetter: {
+      letter: string, results: TileResult[]
+    }[] = lettersSet.map((uniqueLetter: string) => {
+      const resultsForLetter = result.values.filter((tile: TileResult) => {
+        return (tile.letter === uniqueLetter);
+      });
+
+      return {
+        letter: uniqueLetter,
+        results: resultsForLetter
+      }
+    });
+
+    resultsPerLetter.forEach((letterResults) => {
+      // filter results by type
+      const instances = {
+        present: [],
+        correct: [],
+        absent: [],
+      }
+
+      letterResults.results.forEach((tileResult: TileResult) => {
+        switch (tileResult.result) {
+          case TileResultTypes.correct:
+            instances.correct.push(tileResult);
+            break;
+          case TileResultTypes.present:
+            instances.present.push(tileResult);
+            break;
+          case TileResultTypes.absent:
+            instances.absent.push(tileResult);
+            break;
+        }
+      });
+
+      // process type-filtered results
+      if (instances.absent.length > 0) {
+        this.lettersData.data[letterResults.letter].instancesInWord.max = instances.present.length + instances.correct.length;
+      }
+
+      this.lettersData.data[letterResults.letter].instancesInWord.min = instances.present.length + instances.correct.length;
+    });
   }
 
   static selectWord(wordIndex: number): string {
     let selection: string;
-    if (wordIndex === 0)
+    if (Controller.debug)
+      selection = this._preferredRemainingWords[Math.min(this._preferredRemainingWords.length - 1, WORD_SELECTOR_INDEX)];
+    else if (wordIndex === 0)
       selection = this.helpers.selectRandom(
         this._preferredRemainingWords.filter(
           this.filters.allLettersUnique
@@ -114,62 +174,44 @@ export class WordSelector {
       }, true);
     },
 
-    hasAllIncludedLetters(word: string): boolean {
-      // true = keep; false = remove
-      let stillValid: boolean = true;
-      Object.values(WordSelector.lettersData.data).forEach((letterData: LetterData) => {
-        if (!stillValid) return;
+    wordHasNoAbsents(word: string): boolean {
+      const result: boolean = word.split('').reduce((prev: boolean, letter: string) => {
+        if (!prev) return prev;
 
-        switch (letterData.result) {
-          case TileResultTypes.correct:
-            if (word[letterData.correctPosition] !== letterData.letter) stillValid = false;
-            return;
-          case TileResultTypes.present:
-            if (!word.split('').includes(letterData.letter)) stillValid = false;
-            return;
-        }
-      });
-
-      return stillValid;
-    },
-
-    hasNoForbiddenLetters(word: string): boolean {
-      // true = keep; false = remove
-      return word.split('').reduce((previousResult: boolean, letter: string, index: number) => {
-        if (WordSelector.lettersData.data[letter].result === TileResultTypes.absent) return false;
-
-        switch (WordSelector.lettersData.data[letter].result) {
-          case TileResultTypes.absent:
-            return false;
-          case TileResultTypes.present:
-            WordSelector.previousWords.reduce((previousWordCheck: boolean, currentWord: string) => {
-              if (currentWord[index] === letter) return false;
-              else return previousWordCheck;
-            }, previousResult);
-          case TileResultTypes.correct:
-            return previousResult && WordSelector.lettersData.data[letter].correctPosition === index;
-          case TileResultTypes.unknown:
-          default:
-            return previousResult;
-        }
+        const letterData: LetterData = WordSelector.lettersData.data[letter];
+        if (letterData.getBestResultType() === TileResultTypes.absent) return false;
+        return true;
       }, true);
+
+      return result;
     },
 
-    wordHasNoAbsentsNorTriedPresents(word: string): boolean {
-      // true = still might be okay; false = remove
-      const letterResults: boolean[] = word.split('').map((letter: string, index: number) => {
-        const letterData = WordSelector.lettersData.data[letter];
+    wordHasCorrectPresentCount(word: string): boolean {
+      const result: boolean = word.split('').reduce((prev: boolean, letter: string, index: number) => {
+        if (!prev) return prev;
 
-        if (letterData.result === TileResultTypes.absent) return false;
-        else if (letterData.result === TileResultTypes.present) {
-          if (letterData.presentPositions.includes(index)) return false;
-        }
+        const letterData: LetterData = WordSelector.lettersData.data[letter];
+        const instancesInWord: number = word.split('').filter((wordLetter: string) => wordLetter === letter).length;
+
+        if (instancesInWord < letterData.instancesInWord.min) return false;
+        if (instancesInWord > letterData.instancesInWord.max) return false;
 
         return true;
-      });
+      }, true);
 
-      const result: boolean = letterResults.reduce((prev: boolean, current: boolean) => {
-        return prev && current;
+      return result;
+    },
+
+    wordDoesntRetryPastPresents(word: string): boolean {
+      const result: boolean = word.split('').reduce((prev: boolean, letter: string, index: number) => {
+        if (!prev) return prev;
+
+        const letterData: LetterData = WordSelector.lettersData.data[letter];
+        const previousAttempts: number[] = letterData.getPreviousPresentPositions();
+
+        if (previousAttempts.includes(index)) return false;
+
+        return true;
       }, true);
 
       return result;

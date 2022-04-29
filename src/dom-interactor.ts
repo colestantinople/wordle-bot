@@ -1,5 +1,6 @@
 import { KeyInput, Page } from "puppeteer";
-import { TileResultType, WordResults } from "./models/results.js";
+import { WordResult } from "./models/word-result.js";
+import { TileResultType } from "./models/tile-result-types.js";
 
 export class DOMInteractor {
   private page: Page;
@@ -50,7 +51,7 @@ export class DOMInteractor {
     await this.page.evaluate(pageRunner);
   }
 
-  async tryWord(word: string): Promise<WordResults> {
+  async tryWord(word: string): Promise<WordResult> {
     if (!word || word.length !== 5)
       throw new Error('bad word length: ' + (word || 0));
 
@@ -65,7 +66,7 @@ export class DOMInteractor {
     return await this.collectResults(word);
   }
 
-  private async collectResults(word: string): Promise<WordResults> {
+  private async collectResults(word: string): Promise<WordResult> {
     const results: TileResultType[] = await this.page.evaluate(() => {
       const currentRow = (<any>window).getCurrentRow();
 
@@ -85,7 +86,7 @@ export class DOMInteractor {
       return results;
     });
 
-    return new WordResults(word, results);
+    return new WordResult(word, results);
   }
 
   private async waitForLastTileToReveal(): Promise<any> {
