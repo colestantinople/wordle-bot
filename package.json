@@ -1,8 +1,8 @@
 {
   "name": "wordle-bot",
   "version": "1.0.0",
-  "description": "solves today's wordle",
-  "main": "dist/app.js",
+  "description": "Solves today's wordle",
+  "main": "src/app.ts",
   "scripts": {
     "dev": "npx tsc --watch",
     "start": "node --loader ts-node/esm src/app.ts",
