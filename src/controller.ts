@@ -28,7 +28,8 @@ export class Controller {
     Controller.deleteScreenshots();
 
     if (this.shouldLogOutput()) console.log('');
-    
+
+    if(!fs.existsSync('screenshots')) fs.mkdirSync('screenshots');    
     for (let i = 0; i < 6; i++) {
       const wordChoice = WordSelector.selectWord(i);
       this.wordAttempts.push(wordChoice);
