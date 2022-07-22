@@ -3,6 +3,7 @@ import { WordResult } from "./models/word-result.js";
 import { Util } from "./util.js";
 import { TileResultType } from "./models/tile-result-types.js";
 import { DOMInteractorTemplate } from "./dom-interactor-template.js";
+import { WordSelector } from "./word-selector.js";
 
 export class DOMInteractor implements DOMInteractorTemplate {
   private page: Page;
@@ -15,11 +16,13 @@ export class DOMInteractor implements DOMInteractorTemplate {
       (<any>window).getCurrentRowStart = () => {
         const tiles = (<any>window).getTiles() as HTMLElement[];
 
-        for (let i = 0; i < tiles.length; i += 5) {
-          if (tiles[i].getAttribute('data-state') === 'empty') return i - 5;
-        }
+        const filledTileCount: number = tiles.filter((tile) => {
+          return tile.innerHTML !== '';
+        }).length;
 
-        return tiles.length - 5;
+        const rowIndex = (filledTileCount - (filledTileCount % 5)) / 5;
+
+        return (rowIndex - 1) * 5;
       }
 
       (<any>window).getCurrentRow = () => {
@@ -54,6 +57,7 @@ export class DOMInteractor implements DOMInteractorTemplate {
   async closeModal(): Promise<void> {
     function pageRunner() {
       let current: HTMLElement = document.body.querySelector('[data-testid="icon-close"]');
+      if (!current) return; // No modal exists
       while (true) {
         if (current.getAttribute('role') === 'button') {
           current.click();
@@ -81,7 +85,11 @@ export class DOMInteractor implements DOMInteractorTemplate {
 
     await this.page.keyboard.press('Enter');
 
-    await this.waitForLastTileToReveal();
+    await this.waitForLastTileToReveal().catch((reason) => {
+      console.log(WordSelector.getSharableResults());
+
+      throw (reason);
+    });
     return await this.collectResults(word);
   }
 
@@ -112,6 +120,9 @@ export class DOMInteractor implements DOMInteractorTemplate {
         let attemptCount: number = 0;
         const interval = setInterval(() => {
           lastTile = (<any>window).getLastFilledTile();
+
+          if (!lastTile) return;
+
           if (lastTile.getAttribute('data-state') !== 'tbd' && lastTile.getAttribute('data-animation') === 'idle') {
             clearInterval(interval);
             return resolve(true);
@@ -119,12 +130,18 @@ export class DOMInteractor implements DOMInteractorTemplate {
             const tiles: HTMLElement[] = (<any>window).getTiles();
             const rowStart: number = (<any>window).getCurrentRowStart();
 
+            // output generation
+
             let word: string = '';
             for (let i = 0; i < 5; i++) {
               word += tiles[rowStart + i].innerText;
             }
 
-            reject(`Tile ${lastTile.innerText} of row ${rowStart % 5} with word ${word} is not revealed`);
+            const filledTileCount: number = tiles.filter((tile) => {
+              return tile.innerHTML !== '';
+            }).length;
+
+            reject(`Tile ${lastTile.innerHTML} (of ${filledTileCount} tiles) of row ${rowStart % 5} with word ${word} is not revealed`);
           } else attemptCount++;
         }, 100);
       });
