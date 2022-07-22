@@ -139,6 +139,15 @@ export class WordSelector {
     });
   }
 
+  static reset() {
+   WordSelector._remainingWords =[];
+   WordSelector._preferredRemainingWords = [];
+
+   WordSelector.lettersData = new AlphabetData();
+   WordSelector.previousWords = [];
+   WordSelector.previousResults = [];
+  }
+
   static selectWord(wordIndex: number): string {
     let selection: string;
     if (Controller.debug)

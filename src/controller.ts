@@ -9,12 +9,13 @@ import { TileResultTypes } from "./models/tile-result-types.js";
 export class Controller {
   static readonly debug: boolean = Controller.shouldUseDebug();
   static readonly display: boolean = Controller.shouldDisplay();
+  static readonly runLoop: boolean = Controller.shouldRunLoop();
   static wordAttempts: string[] = [];
 
   static async init() {
     const browser: Browser = await puppeteer.launch({
       headless: !Controller.display,
-      slowMo: Controller.debug && Controller.display ? 200 : 0,
+      slowMo: Controller.display ? 200 : 0,
     }),
       page: Page = await browser.newPage();
 
@@ -24,9 +25,9 @@ export class Controller {
 
     await interactor.closeModal();
 
-    Controller.introduceWordlebot();
-    WordSelector.init();
-    Controller.deleteScreenshots();
+    await Controller.introduceWordlebot();
+    await WordSelector.init();
+    await Controller.deleteScreenshots();
 
     if (this.shouldLogOutput()) console.log('');
     
@@ -60,7 +61,7 @@ export class Controller {
     }
   }
 
-  static handleWin(winningWord: string, attemptCount: number): void {
+  private static handleWin(winningWord: string, attemptCount: number): void {
     console.log('\nWin: ' + winningWord);
     console.log('Words tried: ' + (attemptCount + 1));
     this.wordAttempts.forEach((word) => {
@@ -69,7 +70,7 @@ export class Controller {
     console.log('');
   }
 
-  static introduceWordlebot(): void {
+  private static introduceWordlebot(): void {
     console.log(`\nWordlebot - v${process.env.npm_package_version}`);
   }
 
@@ -90,15 +91,24 @@ export class Controller {
     }).join(''));
   }
 
-  static shouldLogOutput(): boolean {
+  static reset(): void {
+    Controller.wordAttempts = [];
+    WordSelector.reset();
+  }
+
+  private static shouldLogOutput(): boolean {
     return process.argv.includes('log');
   }
 
-  static shouldUseDebug(): boolean {
+  private static shouldUseDebug(): boolean {
     return process.argv.includes('debug');
   }
 
-  static shouldDisplay(): boolean {
+  private static shouldDisplay(): boolean {
     return process.argv.includes('display');
+  }
+
+  private static shouldRunLoop(): boolean {
+    return process.argv.includes('loop');
   }
 }
