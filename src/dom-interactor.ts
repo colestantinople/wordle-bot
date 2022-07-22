@@ -1,8 +1,10 @@
 import { KeyInput, Page } from "puppeteer";
 import { WordResult } from "./models/word-result.js";
+import { Util } from "./util.js";
 import { TileResultType } from "./models/tile-result-types.js";
+import { DOMInteractorTemplate } from "./dom-interactor-template.js";
 
-export class DOMInteractor {
+export class DOMInteractor implements DOMInteractorTemplate {
   private page: Page;
 
   constructor(page: Page) {
@@ -10,42 +12,57 @@ export class DOMInteractor {
 
     // setup global variables
     page.evaluate(() => {
-      (<any>window).getCurrentRow = () => {
-        const rows = Array.from(document.querySelector('game-app')
-          .shadowRoot
-          .querySelector('#board')
-          .querySelectorAll('game-row'));
+      (<any>window).getCurrentRowStart = () => {
+        const tiles = (<any>window).getTiles() as HTMLElement[];
 
-        let rowIndex: number = 0;
-        for (; rowIndex < rows.length; rowIndex++) {
-          if (rows[rowIndex + 1] && rows[rowIndex + 1].getAttribute('letters') === '') return rows[rowIndex];
+        for (let i = 0; i < tiles.length; i += 5) {
+          if (tiles[i].getAttribute('data-state') === 'empty') return i - 5;
         }
-        return rows[rows.length - 1];
+
+        return tiles.length - 5;
       }
 
-      (<any>window).getLastTile = () => {
-        const row = (<any>window).getCurrentRow() as HTMLElement;
-        const tiles = Array.from(row
-          .shadowRoot
-          .querySelectorAll('game-tile'));
+      (<any>window).getCurrentRow = () => {
+        const startOfWord: number = (<any>window).getCurrentRowStart();
+        const tiles: HTMLElement[] = (<any>window).getTiles();
 
-        return tiles[tiles.length - 1];
+        return tiles.splice(startOfWord, 5);
+      }
+
+      (<any>window).getLastFilledTile = () => {
+        const tiles = (<any>window).getTiles() as HTMLElement[];
+
+        return tiles.filter((tile) => {
+          return tile.getAttribute('data-state') !== 'empty';
+        }).pop();
+      }
+
+      (<any>window).getTiles = () => {
+        return Array.from(document.querySelectorAll('[data-testid="tile"]'));
       }
     });
   }
 
   async checkForWin(): Promise<boolean> {
     return this.page.evaluate(() => {
-      return ((<any>window).getCurrentRow() as HTMLElement).hasAttribute('win');
+      return ((<any>window).getCurrentRow() as HTMLElement[]).map((tile) => {
+        return tile.getAttribute('data-state') === 'correct';
+      }).reduce((prev, current) => prev && current);
     });
   }
 
   async closeModal(): Promise<void> {
     function pageRunner() {
-      document.querySelector('game-app')
-        .shadowRoot
-        .querySelector('game-modal')
-        .dispatchEvent(new Event('click'));
+      let current: HTMLElement = document.body.querySelector('[data-testid="icon-close"]');
+      while (true) {
+        if (current.getAttribute('role') === 'button') {
+          current.click();
+          break;
+        }
+
+        current = current.parentElement;
+        if (current.parentElement === document.body) throw new Error('No modal closer found.');
+      }
     }
 
     await this.page.evaluate(pageRunner);
@@ -60,6 +77,8 @@ export class DOMInteractor {
       await this.page.keyboard.press(key as KeyInput);
     };
 
+    await Util.sleep(50);
+
     await this.page.keyboard.press('Enter');
 
     await this.waitForLastTileToReveal();
@@ -68,18 +87,14 @@ export class DOMInteractor {
 
   private async collectResults(word: string): Promise<WordResult> {
     const results: TileResultType[] = await this.page.evaluate(() => {
-      const currentRow = (<any>window).getCurrentRow();
-
-      const results: TileResultType[] = Array.from((currentRow as HTMLElement)
-        .shadowRoot
-        .querySelectorAll('game-tile'))
+      const results: TileResultType[] = (<any>window).getCurrentRow()
         .map((tile: HTMLElement) => {
-          switch (tile.getAttribute('evaluation')) {
+          switch (tile.getAttribute('data-state')) {
             case 'absent': return 1;
             case 'present': return 2;
             case 'correct': return 3;
             default:
-              throw new Error('bad evaluation type: ' + tile.getAttribute('evaluation'));
+              throw new Error('bad evaluation type: ' + tile.getAttribute('data-state'));
           }
         });
 
@@ -91,31 +106,25 @@ export class DOMInteractor {
 
   private async waitForLastTileToReveal(): Promise<any> {
     return this.page.evaluate(() => {
-      const lastTile: HTMLElement = (<any>window).getLastTile();
-      const lastTileInner: HTMLElement = lastTile.shadowRoot.querySelector('.tile');
+      let lastTile: HTMLElement;
 
       return new Promise((resolve, reject) => {
         let attemptCount: number = 0;
         const interval = setInterval(() => {
-          if (lastTile.hasAttribute('reveal') && lastTileInner.getAttribute('data-animation') === 'idle') {
+          lastTile = (<any>window).getLastFilledTile();
+          if (lastTile.getAttribute('data-state') !== 'tbd' && lastTile.getAttribute('data-animation') === 'idle') {
             clearInterval(interval);
             return resolve(true);
-          } else if (attemptCount > 100) {
-            const row: HTMLElement = (<any>window).getCurrentRow();
-            let rowIndex: number;
-            Array.from(row.parentElement.children).forEach((child, i) => {
-              if (child.isEqualNode(row)) {
-                rowIndex = i;
-              }
-            });
+          } else if (attemptCount > 60) {
+            const tiles: HTMLElement[] = (<any>window).getTiles();
+            const rowStart: number = (<any>window).getCurrentRowStart();
 
-            let receivedWord = '';
-            row.shadowRoot.querySelectorAll('game-tile').forEach((tile) => {
-              receivedWord += tile.getAttribute('letter');
-            });
+            let word: string = '';
+            for (let i = 0; i < 5; i++) {
+              word += tiles[rowStart + i].innerText;
+            }
 
-            reject(`Tile ${lastTile.getAttribute('letter')} of row ${rowIndex} with word ${receivedWord} is not revealed`);
-            // reject(`Tile ${lastTile.getAttribute('letter')} of no row is not revealed`);
+            reject(`Tile ${lastTile.innerText} of row ${rowStart % 5} with word ${word} is not revealed`);
           } else attemptCount++;
         }, 100);
       });
