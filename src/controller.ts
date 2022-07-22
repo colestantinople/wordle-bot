@@ -8,12 +8,13 @@ import { TileResultTypes } from "./models/tile-result-types.js";
 
 export class Controller {
   static readonly debug: boolean = Controller.shouldUseDebug();
+  static readonly display: boolean = Controller.shouldDisplay();
   static wordAttempts: string[] = [];
 
   static async init() {
     const browser: Browser = await puppeteer.launch({
-      headless: !Controller.debug,
-      slowMo: Controller.debug ? 200 : 0,
+      headless: !Controller.display,
+      slowMo: Controller.debug && Controller.display ? 200 : 0,
     }),
       page: Page = await browser.newPage();
 
@@ -95,5 +96,9 @@ export class Controller {
 
   static shouldUseDebug(): boolean {
     return process.argv.includes('debug');
+  }
+
+  static shouldDisplay(): boolean {
+    return process.argv.includes('display');
   }
 }
